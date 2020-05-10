@@ -124,3 +124,24 @@ msgstr "Suiza"
 
 msgid "United Kingdom of Great Britain and Northern Ireland"
 msgstr "Reino Unido"
+
+msgid "Value is required"
+msgstr "Valor obligatorio"
+
+msgid "Value must not exceed %s characters"
+msgstr "Value must not exceed %s characters"
+
+msgid "Date is invalid"
+msgstr "Date is invalid"
+
+msgid "Value is not numeric"
+msgstr "Value is not numeric"
+
+msgid "Invalid value"
+msgstr "Invalid value"
+
+msgid "Male"
+msgstr "Hombre"
+
+msgid "Female"
+msgstr "Mujer"

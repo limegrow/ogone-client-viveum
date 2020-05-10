@@ -17,7 +17,8 @@ class PaymentMethod implements \Countable, \IteratorAggregate
         'card' => 'Cards',
         'real_time_banking' => 'Real-time Banking',
         'e_wallet' => 'e-Wallet',
-        'prepaid_vouchers' => 'Prepaid Vouchers'
+        'prepaid_vouchers' => 'Prepaid Vouchers',
+        'open_invoice' => 'Open Invoice'
     ];
 
     /**
@@ -206,16 +207,54 @@ class PaymentMethod implements \Countable, \IteratorAggregate
     /**
      * Get Payment Method by Brand
      *
-     * @param $brand
+     * @param string $brand
+     * @param IngenicoCoreLibrary|null $coreLibrary
      * @return PaymentMethod\PaymentMethod|false
      */
-    public static function getPaymentMethodByBrand($brand)
+    public static function getPaymentMethodByBrand($brand, $coreLibrary = null)
     {
+        // Workaround for Afterpay/Klarna
+        if (in_array($brand, ['Open Invoice DE', 'Open Invoice NL'])) {
+            if ($coreLibrary instanceof IngenicoCoreLibrary) {
+                // If core library defined then use configuration to recognize the payment method
+                $selected = $coreLibrary->getConfiguration()->getSelectedPaymentMethods();
+                if (in_array('klarna', $selected)) {
+                    return self::getPaymentMethodById('klarna');
+                } elseif (in_array('afterpay', $selected)) {
+                    return self::getPaymentMethodById('afterpay');
+                } else {
+                    return false;
+                }
+            }
+
+            return self::getPaymentMethodById('klarna');
+        }
+
         $paymentMethods = new PaymentMethod();
 
         /** @var PaymentMethod\PaymentMethod $paymentMethod */
         foreach ($paymentMethods as $paymentMethod) {
             if (strtolower($paymentMethod->getBrand()) === strtolower($brand)) {
+                return $paymentMethod;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get Payment Method by Id
+     *
+     * @param $id
+     * @return PaymentMethod\PaymentMethod|false
+     */
+    public static function getPaymentMethodById($id)
+    {
+        $paymentMethods = new PaymentMethod();
+
+        /** @var PaymentMethod\PaymentMethod $paymentMethod */
+        foreach ($paymentMethods as $paymentMethod) {
+            if (strtolower($paymentMethod->getId()) === strtolower($id)) {
                 return $paymentMethod;
             }
         }

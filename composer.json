@@ -1,7 +1,7 @@
 {
     "name": "ingenico/ogone-client-viveum",
     "description": "Ingenico ePayments Core Library",
-    "version": "1.0.4",
+    "version": "2.0.0",
     "license": [
         "OSL-3.0"
     ],
@@ -20,11 +20,11 @@
         "ext-curl": "*",
         "ext-mbstring": "*",
         "ext-bcmath": "*",
-        "ingenico/ogone-sdk-php-viveum": "^1.0.0",
-        "monolog/monolog": "^1.24",
-        "league/iso3166": "^2.1",
+        "ingenico/ogone-sdk-php-viveum": "^2.0.0",
+        "monolog/monolog": "*",
+        "league/iso3166": "~2.1",
         "graylog2/gelf-php": "~1.5",
-        "symfony/translation": "^4.2"
+        "symfony/translation": "~4.2"
     },
     "require-dev": {
         "phpunit/phpunit": "^7"

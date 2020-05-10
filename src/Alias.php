@@ -29,6 +29,8 @@ namespace IngenicoClient;
  * @method $this setIsPreventStoring($value)
  * @method string getForceSecurity()
  * @method $this setForceSecurity($value)
+ * @method string getPaymentId()
+ * @method $this setPaymentId($value)
  *
  * @package IngenicoClient
  */
@@ -73,22 +75,21 @@ class Alias extends Data
     /**
      * Get Payment Method Instance
      * @return PaymentMethod\PaymentMethod
-     * @throws Exception
      */
     public function getPaymentMethod()
     {
-        $paymentMethods = new PaymentMethod();
-        if ('Bancontact/Mister Cash' === $this->getBrand()) {
-            $paymentMethod = $paymentMethods->getPaymentMethodByBrand('BCMC');
-        } else {
-            $paymentMethod = $paymentMethods->getPaymentMethodByBrand($this->getBrand());
+        if ($this->getPaymentId() && $paymentMethod = PaymentMethod::getPaymentMethodById($this->getPaymentId())) {
+            // Map payment_id property as PaymentMethod->id
+            return $paymentMethod;
+        } elseif ('Bancontact/Mister Cash' === $this->getBrand()) {
+            // Workaround for Bancontact
+            return PaymentMethod::getPaymentMethodByBrand('BCMC');
+        } elseif ($this->getBrand() && $paymentMethod = PaymentMethod::getPaymentMethodByBrand($this->getBrand())) {
+            // Map brand property as PaymentMethod->brand
+            return $paymentMethod;
         }
 
-        if (!$paymentMethod) {
-            throw new Exception('Can\'t to get PaymentMethod instance by Brand: ' . $this->getBrand());
-        }
-
-        return $paymentMethod;
+        return new PaymentMethod\PaymentMethod();
     }
 
     /**

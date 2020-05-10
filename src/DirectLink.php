@@ -105,7 +105,7 @@ class DirectLink extends Checkout implements CheckoutInterface
             ->setOrder($order)
             ->setUrls($urls)
             ->setOperation($operation)
-            ->setAlias(new Alias($alias))
+            ->setAlias((new Alias($alias->getAlias()))->setAliasOperation($alias->getAliasOperation()))
             ->setCvc($cvc);
 
         $dlPaymentRequest = $request->getPaymentRequest();

@@ -144,14 +144,12 @@ class Configuration extends Data
         'connection_test_signature' => null,
         'connection_test_dl_user' => null,
         'connection_test_dl_password' => null,
-        'connection_test_dl_timeout' => 30,
         'connection_test_webhook' => null,
         'connection_live_algorithm' => self::HASH_SHA512,
         'connection_live_pspid' => null,
         'connection_live_signature' => null,
         'connection_live_dl_user' => null,
         'connection_live_dl_password' => null,
-        'connection_live_dl_timeout' => 30,
         'connection_live_webhook' => null,
         'settings_orderfreeze_days' => 3,
         'settings_reminderemail_days' => 2,
@@ -503,11 +501,6 @@ class Configuration extends Data
             }
         }
 
-        if (in_array($fieldKey, ['connection_test_dl_timeout', 'connection_live_dl_timeout']) && $fieldValue < 0) {
-            // Request timeout is not valid.
-            return $this->coreLibrary->__('validator.request_timeout');
-        }
-
         if (in_array($fieldKey, ['connection_test_signature', 'connection_live_signature'])) {
             if (!empty($fieldValue) && strlen($fieldValue) < 40 ) {
                 return $this->coreLibrary->__('validator.short_signature');
@@ -537,7 +530,7 @@ class Configuration extends Data
      * Save Configuration.
      * Use for saving configuration on connector's side.
      *
-     * @return void
+     * @return $this
      * @throws Exception
      */
     public function save()
@@ -562,6 +555,8 @@ class Configuration extends Data
         if (count($errors) > 0) {
             throw new Exception(sprintf('Validation errors: %s', implode("\n", $errors)));
         }
+
+        return $this;
     }
 
     /**

@@ -9,8 +9,6 @@ use InvalidArgumentException;
  * @method mixed getOrderId()
  * @method float getAmount()
  * @method mixed getCurrency()
- * @method $this setUserId($value)
- * @method mixed getUserId()
  * @method $this setPayId($value)
  * @method mixed getPayId()
  * @method $this setStatus($value)
@@ -25,14 +23,22 @@ use InvalidArgumentException;
  * @method float getTotalRefunded()
  * @method $this setTotalCancelled($value)
  * @method float getTotalCancelled()
+ * @method $this setCustomerId($value)
+ * @method mixed getCustomerId()
  * @method $this setCustomerIp($value)
  * @method mixed getCustomerIp()
  * @method $this setCustomerDob($value)
  * @method mixed getCustomerDob()
  * @method $this setCustomerCivility($value)
  * @method mixed getCustomerCivility()
+ * @method $this setCustomerGender($value)
+ * @method mixed getCustomerGender()
+ * @method $this setCustomerRegistrationNumber($value)
+ * @method mixed getCustomerRegistrationNumber()
  * @method $this setIsShippingSame($value)
  * @method bool getIsShippingSame()
+ * @method $this setBillingCustomerTitle($value)
+ * @method mixed getBillingCustomerTitle()
  * @method $this setBillingCountryCode($value)
  * @method $this setBillingCountry($value)
  * @method mixed getBillingCountry()
@@ -50,15 +56,23 @@ use InvalidArgumentException;
  * @method mixed getBillingPostcode()
  * @method $this setBillingPhone($value)
  * @method mixed getBillingPhone()
+ * @method $this setBillingFax($value)
+ * @method mixed getBillingFax()
  * @method $this setBillingEmail($value)
  * @method mixed getBillingEmail()
  * @method $this setBillingFirstName($value)
  * @method mixed getBillingFirstName()
  * @method $this setBillingLastName($value)
  * @method mixed getBillingLastName()
+ * @method $this setBillingStreetNumber($value)
+ * @method mixed getBillingStreetNumber()
+ * @method $this setShippingCustomerTitle($value)
+ * @method mixed getShippingCustomerTitle()
  * @method $this setShippingCountryCode($value)
  * @method $this setShippingCountry($value)
  * @method mixed getShippingCountry()
+ * @method $this setShippingCounty($value)
+ * @method mixed getShippingCounty()
  * @method $this setShippingAddress1($value)
  * @method mixed getShippingAddress1()
  * @method $this setShippingAddress2($value)
@@ -73,12 +87,34 @@ use InvalidArgumentException;
  * @method mixed getShippingPostcode()
  * @method $this setShippingPhone($value)
  * @method mixed getShippingPhone()
+ * @method $this setShippingFax($value)
+ * @method mixed getShippingFax()
  * @method $this setShippingEmail($value)
  * @method mixed getShippingEmail()
  * @method $this setShippingFirstName($value)
  * @method mixed getShippingFirstName()
  * @method $this setShippingLastName($value)
  * @method mixed getShippingLastName()
+ * @method $this setShippingStreetNumber($value)
+ * @method mixed getShippingStreetNumber()
+ * @method $this setShippingMethod($value)
+ * @method mixed getShippingMethod()
+ * @method $this setShippingAmount($value)
+ * @method mixed getShippingAmount()
+ * @method $this setShippingTaxAmount($value)
+ * @method mixed getShippingTaxAmount()
+ * @method $this setShippingTaxCode($value)
+ * @method mixed getShippingTaxCode()
+ * @method $this setShippingDateTime($value)
+ * @method mixed getShippingDateTime()
+ * @method $this setRefCustomerref($value)
+ * @method mixed getRefCustomerref()
+ * @method $this setCompanyName($value)
+ * @method mixed getCompanyName()
+ * @method $this setCompanyVat($value)
+ * @method mixed getCompanyVat()
+ * @method $this setCheckoutType($value)
+ * @method mixed getCheckoutType()
  * @package IngenicoClient
  */
 class Order extends Data
@@ -201,8 +237,8 @@ class Order extends Data
      */
     public function setAmount($amount)
     {
-        if ($amount <= 0) {
-            throw new InvalidArgumentException("Amount must be a positive number");
+        if ($amount < 0) {
+            throw new InvalidArgumentException("Amount must be a positive number or 0");
         }
 
         if (($amount * 100) >= 1.0E+15) {
@@ -304,6 +340,27 @@ class Order extends Data
         }
 
         return $this->setData('currency', $currency);
+    }
+
+    /**
+     * Alias for getCustomerId()
+     * @deprecated
+     * @return $this
+     */
+    public function getUserId()
+    {
+        return $this->getCustomerId();
+    }
+
+    /**
+     * Alias for setCustomerId()
+     * @deprecated
+     * @param $userId
+     * @return $this
+     */
+    public function setUserId($userId)
+    {
+        return $this->setCustomerId($userId);
     }
 
     /**
@@ -414,5 +471,35 @@ class Order extends Data
         }
 
         return $this->getData('http_user_agent');
+    }
+
+    /**
+     * Set Order Items
+     *
+     * @param array $items
+     * @return $this
+     */
+    public function setItems(array $items = [])
+    {
+        return $this->setData('items', $items);
+    }
+
+    /**
+     * Get Order Items
+     *
+     * @return array
+     */
+    public function getItems()
+    {
+        $result = [];
+        $items = $this->getData('items');
+
+        if ($items) {
+            foreach ($items as $item) {
+                $result[] = new OrderItem($item);
+            }
+        }
+
+        return $result;
     }
 }

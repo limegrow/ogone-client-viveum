@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.0] - 2020-05-10
+### Added
+- OpenInvoice support (Klarna and AfterPay)
+
+### Fixed
+- PHP 7.3 compatibility
+- Possible Monolog version requirement conflict
+
 ## [1.0.4] - 2019-11-08
 ### Fixed
 - DirectLink configuration issue

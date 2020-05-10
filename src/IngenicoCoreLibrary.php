@@ -8,8 +8,11 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\Translation\Translator;
 use Symfony\Component\Translation\Loader\PoFileLoader;
 
-class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
+class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterface, OpenInvoiceInterface
 {
+    use Session;
+    use OpenInvoice;
+
     /**
      * Payment Statuses
      */
@@ -44,6 +47,18 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
     const CONTROLLER_TYPE_SUCCESS = 'success';
     const CONTROLLER_TYPE_ORDER_SUCCESS = 'order_success';
     const CONTROLLER_TYPE_ORDER_CANCELLED = 'order_cancelled';
+
+    /**
+     * Parameters
+     */
+    const PARAM_NAME_OPEN_INVOICE_ORDER_ID = 'open_invoice_order_id';
+    const PARAM_NAME_OPEN_INVOICE_CHECKOUT_INPUT = 'open_invoice_checkout_input';
+    const PARAM_NAME_OPEN_INVOICE_FIELDS = 'open_invoice_additional_fields';
+
+    /**
+     * Aliases
+     */
+    const ALIAS_CREATE_NEW = 'new';
 
     /**
      * Account creation link language mapping
@@ -572,6 +587,11 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
     private $translator;
 
     /**
+     * @var string
+     */
+    private $mail_templates_directory;
+
+    /**
      * IngenicoCoreLibrary constructor.
      *
      * @param ConnectorInterface $extension
@@ -705,6 +725,42 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
     public function getConfiguration()
     {
         return $this->configuration;
+    }
+
+    /**
+     * Set Generic Merchant Country.
+     *
+     * @param $country
+     * @return Configuration
+     * @throws Exception
+     */
+    public function setGenericCountry($country)
+    {
+        return $this->configuration
+            ->setData('generic_country', $country)
+            ->save();
+    }
+
+    /**
+     * Set Mail Templates Directory
+     * @param string $templates_directory
+     * @return $this
+     */
+    public function setMailTemplatesDirectory($templates_directory)
+    {
+        $this->mail_templates_directory = $templates_directory;
+
+        return $this;
+    }
+
+    /**
+     * Get Mail Templates Directory
+     *
+     * @return string
+     */
+    public function getMailTemplatesDirectory()
+    {
+        return $this->mail_templates_directory;
     }
 
     /**
@@ -896,6 +952,14 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
 
         // Check is Payment Successful
         if ($paymentResult->isPaymentSuccessful()) {
+            // Clean up OpenInvoice session values
+            $session = $this->extension->getSessionValues();
+            foreach ($session as $key => $value) {
+                if (strpos($key, 'open_invoice_') !== false) {
+                    $this->extension->unsetSessionValue($key);
+                }
+            }
+
             // Show "Order success" page
             $this->extension->showSuccessTemplate(
                 [
@@ -976,11 +1040,11 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         // Show loader
         $this->extension->showInlineLoaderTemplate(
             [
-                'type' => IngenicoCoreLibrary::PAYMENT_MODE_INLINE,
-                'order_id' => $_REQUEST['Alias_OrderId'],
-                'alias_id' => $_REQUEST['Alias_AliasId'],
-                'card_brand' => $_REQUEST['Card_Brand'],
-                'data' => $_REQUEST
+                Connector::PARAM_NAME_TYPE => IngenicoCoreLibrary::PAYMENT_MODE_INLINE,
+                Connector::PARAM_NAME_ORDER_ID => $_REQUEST['Alias_OrderId'],
+                Connector::PARAM_NAME_ALIAS_ID => $_REQUEST['Alias_AliasId'],
+                Connector::PARAM_CARD_BRAND => $_REQUEST['Card_Brand'],
+                Connector::PARAM_DATA => $_REQUEST
             ]
         );
     }
@@ -1002,6 +1066,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
 
         $alias = new Alias();
         $alias->setAlias($aliasId)
+            ->setPaymentId($paymentMethod->getId())
             ->setBrand($cardBrand)
             ->setPm($paymentMethod->getPM())
             ->setForceSecurity(true);
@@ -1112,11 +1177,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
      *
      * @param mixed $orderId
      * @param mixed $aliasId
+     * @param bool $forceAliasSave
      *
      * @throws Exception
      * @return void
      */
-    public function processPayment($orderId, $aliasId = null)
+    public function processPayment($orderId, $aliasId = null, $forceAliasSave = false)
     {
         // Get Payment Mode
         $payment_mode = $this->configuration->getPaymentpageType();
@@ -1125,17 +1191,17 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         // When "Skip security check (CVV & 3D Secure)" is enabled then process saved Alias on Merchant side.
         if ($this->configuration->getSettingsOneclick() &&
             $this->configuration->getSettingsSkipsecuritycheck() &&
-            $aliasId && is_numeric($aliasId))
+            $aliasId && !empty($aliasId) && $aliasId !== self::ALIAS_CREATE_NEW)
         {
             $payment_mode = self::PAYMENT_MODE_ALIAS;
         }
 
         switch ($payment_mode) {
             case self::PAYMENT_MODE_REDIRECT:
-                $this->processPaymentRedirect($orderId, $aliasId);
+                $this->processPaymentRedirect($orderId, $aliasId, $forceAliasSave);
                 break;
             case self::PAYMENT_MODE_INLINE:
-                $this->processPaymentInline($orderId, $aliasId);
+                $this->processPaymentInline($orderId, $aliasId, $forceAliasSave);
                 break;
             case self::PAYMENT_MODE_ALIAS:
                 $this->processPaymentAlias($orderId, $aliasId);
@@ -1150,15 +1216,16 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
      *
      * @param mixed $orderId
      * @param mixed $aliasId
+     * @param bool $forceAliasSave
      * @throws Exception
      * @return void
      */
-    private function processPaymentRedirect($orderId, $aliasId = null)
+    private function processPaymentRedirect($orderId, $aliasId = null, $forceAliasSave = false)
     {
          if ($this->configuration->getSettingsOneclick()) {
             // Customer chose the saved alias
             $aliasUsage = $this->__('core.authorization_usage');
-            if (is_numeric($aliasId)) {
+            if (!empty($aliasId) && $aliasId !== self::ALIAS_CREATE_NEW) {
                 // Payment with Saved Alias
                 $alias = $this->getAlias($aliasId);
                 if (!$alias->getId()) {
@@ -1184,14 +1251,18 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
              $alias->setIsPreventStoring(true);
         }
 
+        if ($forceAliasSave && !$alias->getIsShouldStoredPermanently()) {
+             $alias->setIsShouldStoredPermanently($forceAliasSave);
+        }
+
         // Initiate Redirect Payment
         $data = $this->initiateRedirectPayment($orderId, $alias);
 
         // Show page with list of payment methods
         $this->extension->showPaymentListRedirectTemplate([
-            'order_id' => $orderId,
-            'url' => $data->getUrl(),
-            'fields' => $data->getFields()
+            Connector::PARAM_NAME_ORDER_ID => $orderId,
+            Connector::PARAM_NAME_URL => $data->getUrl(),
+            Connector::PARAM_NAME_FIELDS => $data->getFields()
         ]);
     }
 
@@ -1200,16 +1271,17 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
      *
      * @param mixed $orderId
      * @param mixed $aliasId
+     * @param bool $forceAliasSave
      * @return void
      * @throws Exception
      */
-    private function processPaymentInline($orderId, $aliasId)
+    private function processPaymentInline($orderId, $aliasId, $forceAliasSave = false)
     {
         // One Click Payments
         if ($this->configuration->getSettingsOneclick()) {
             // Customer chose the saved alias
-            if (is_numeric($aliasId)) {
-                // Payment with the aved alias
+            if (!empty($aliasId) && $aliasId !== self::ALIAS_CREATE_NEW) {
+                // Payment with the saved alias
                 $alias = $this->getAlias($aliasId);
                 if (!$alias->getId()) {
                     throw new Exception($this->__('exceptions.alias_none'));
@@ -1230,15 +1302,19 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             $alias->setIsShouldStoredPermanently(false);
         }
 
+        if (!$alias->getIsShouldStoredPermanently()) {
+            $alias->setIsShouldStoredPermanently($forceAliasSave);
+        }
+
         // Get Inline Payment Methods
         $inlineMethods = $this->getInlinePaymentMethods($orderId, $alias);
 
         // Show page with list of payment methods
         $this->extension->showPaymentListInlineTemplate([
-            'order_id' => $orderId,
-            'categories' => $this->getPaymentCategories(),
-            'methods' => $inlineMethods,
-            'credit_card_url' => $this->getInlineIFrameUrl($orderId,
+            Connector::PARAM_NAME_ORDER_ID => $orderId,
+            Connector::PARAM_NAME_CATEGORIES => $this->getPaymentCategories(),
+            Connector::PARAM_NAME_METHODS => $inlineMethods,
+            Connector::PARAM_NAME_CC_URL => $this->getInlineIFrameUrl($orderId,
                 $alias->setPm('CreditCard')->setBrand('')
             )
         ]);
@@ -1265,7 +1341,8 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             throw new Exception($this->__('exceptions.access_denied'));
         }
 
-        $alias->setOperation(Alias::OPERATION_BY_PSP)
+        // We should use BY_MERCHANT for secondary transactions
+        $alias->setOperation(Alias::OPERATION_BY_MERCHANT)
             ->setUsage($this->__('core.authorization_usage'));
 
         // Charge payment using Alias
@@ -1317,11 +1394,11 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             // Show "Order success" page
             $this->extension->showSuccessTemplate(
                 [
-                    'type' => IngenicoCoreLibrary::PAYMENT_MODE_INLINE,
-                    'order_id' => $orderId,
-                    'pay_id' => $payId,
-                    'payment_status' => $paymentResult->getPaymentStatus(),
-                    'is_show_warning' => $paymentResult->getPaymentStatus() === self::STATUS_AUTHORIZED &&
+                    Connector::PARAM_NAME_TYPE => IngenicoCoreLibrary::PAYMENT_MODE_INLINE,
+                    Connector::PARAM_NAME_ORDER_ID => $orderId,
+                    Connector::PARAM_NAME_PAY_ID => $payId,
+                    Connector::PARAM_NAME_PAYMENT_STATUS => $paymentResult->getPaymentStatus(),
+                    Connector::PARAM_NAME_IS_SHOW_WARNING => $paymentResult->getPaymentStatus() === self::STATUS_AUTHORIZED &&
                         $this->configuration->isTestMode()
                 ],
                 $paymentResult
@@ -1330,8 +1407,8 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             // Show "Order cancelled" page
             $this->extension->showCancellationTemplate(
                 [
-                    'order_id' => $orderId,
-                    'pay_id' => $payId,
+                    Connector::PARAM_NAME_ORDER_ID => $orderId,
+                    Connector::PARAM_NAME_PAY_ID => $payId,
                 ],
                 $paymentResult
             );
@@ -1340,9 +1417,9 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             // Payment error or declined.
             $this->extension->showPaymentErrorTemplate(
                 [
-                    'order_id' => $orderId,
-                    'pay_id' => $payId,
-                    'message' => $this->__('checkout.error', [
+                    Connector::PARAM_NAME_ORDER_ID => $orderId,
+                    Connector::PARAM_NAME_PAY_ID => $payId,
+                    Connector::PARAM_NAME_MESSAGE => $this->__('checkout.error', [
                         '%payment_id%' => (int) $paymentResult->getPayId(),
                         '%status%' => $paymentResult->getStatus(),
                         '%code%' => $paymentResult->getErrorCode(),
@@ -1397,9 +1474,54 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             } else {
                 // This Payment Method don't support Inline
                 // Use special page for "Redirect" payment
+                if (in_array($paymentMethod->getId(), ['afterpay', 'klarna'])) {
+                    // Workaround for Afterpay and Klarna
+                    $order = $this->getOrder($orderId);
+                    $billingCountry = $order->getBillingCountryCode();
+                    $pm = $paymentMethod->getPMByCountry($billingCountry);
+                    if (!$pm) {
+                        // Skip it because PM doesn't support customer's country
+                        unset($selectedPaymentMethods[$key]);
+                        continue;
+                    }
+
+                    $brand = $paymentMethod->getBrandByCountry($billingCountry);
+                    if (!$brand) {
+                        // Skip it because PM doesn't support customer's country
+                        unset($selectedPaymentMethods[$key]);
+                        continue;
+                    }
+
+                    // Get previous entered fields from Session
+                    $previousFields = $this->getSessionValue(self::PARAM_NAME_OPEN_INVOICE_CHECKOUT_INPUT);
+                    if (!$previousFields) {
+                        $previousFields = [];
+                    }
+
+                    // Get Additional fields from Session
+                    $additionalFields = $this->getSessionValue(self::PARAM_NAME_OPEN_INVOICE_FIELDS);
+                    if (!$additionalFields) {
+                        // Get Additional fields
+                        $additionalFields = $this->getMissingOrderFields($orderId, $paymentMethod, $previousFields);
+
+
+                        // Save Additional Fields in Session
+                        $this->setSessionValue('open_invoice_additional_fields', $additionalFields);
+                    }
+
+                    $additionalFields = $this->validateAdditionalFields($additionalFields, $previousFields);
+
+                    // Override PM/Brand
+                    $paymentMethod->setPM($pm)
+                        ->setBrand($brand)
+                        ->setMissingFields($additionalFields);
+                }
+
+                // @todo Use Id of PaymentMethod only. Remove PM and Brand.
                 $url = $this->extension->buildPlatformUrl(self::CONTROLLER_TYPE_PAYMENT, [
-                    'pm' => $paymentMethod->getPM(),
-                    'brand' => $paymentMethod->getBrand()
+                    Connector::PARAM_NAME_PAYMENT_ID => $paymentMethod->getId(),
+                    Connector::PARAM_NAME_PM => $paymentMethod->getPM(),
+                    Connector::PARAM_NAME_BRAND => $paymentMethod->getBrand()
                 ]);
             }
 
@@ -1437,6 +1559,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         $creditDebitFlag = null;
 
         // Get Assigned PaymentMethod
+        $paymentMethod = null;
         try {
             $paymentMethod = $alias->getPaymentMethod();
 
@@ -1464,6 +1587,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         }
 
         return (new DirectLink())
+            ->setPaymentMethod($paymentMethod)
             ->setIsSecure(!$skipSecurityCheck)
             ->setLanguage($this->getLocale($orderId))
             ->setEci(new Eci(Eci::ECOMMERCE_RECURRING))
@@ -1485,11 +1609,19 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
 
         // Request Return Urls from Connector
         $urls = $this->requestReturnUrls($orderId, self::PAYMENT_MODE_INLINE);
-        $template = $this->configuration->getPaymentpageTemplateName();
-        $flexCheckout = new FlexCheckout();
-        return $flexCheckout
-            ->createFlexCheckout($this->configuration, $order, $alias, $urls, $template)
-            ->getCheckoutUrl();
+
+        // Initiate FlexCheckout Payment Request
+        $request = (new FlexCheckout())
+            ->setConfiguration($this->configuration)
+            ->setOrder($order)
+            ->setUrls($urls)
+            ->setAlias($alias)
+            ->getPaymentRequest();
+
+        $request->setShaSign();
+        $request->validate();
+
+        return $request->getCheckoutUrl();
     }
 
     /**
@@ -1541,6 +1673,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             ->setConfiguration($this->configuration)
             ->setOrder($order)
             ->setUrls($this->requestReturnUrls($orderId))
+            ->setPaymentMethod($alias->getPaymentMethod())
             ->setOperation($operation)
             ->setAlias($alias->getIsPreventStoring() ? null : $alias->exchange())
             ->setPm($alias->getPm())
@@ -1774,7 +1907,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
      */
     public function getPaymentMethodByBrand($brand)
     {
-        return PaymentMethod::getPaymentMethodByBrand($brand);
+        return PaymentMethod::getPaymentMethodByBrand($brand, $this);
     }
 
     /**
@@ -1904,16 +2037,16 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
                 null,
                 $this->__('onboarding_request.subject', ['%platform%' => $eCommercePlatform, '%country%' => $countryCode], 'email', $locale),
                 [
-                    'eCommercePlatform' => $eCommercePlatform,
-                    'companyName' => $companyName,
-                    'email' => $email,
-                    'country' => $countryCode,
-                    'requestTimeDate' => new \DateTime('now'),
-                    'versionNumber' => $pluginVersion,
-                    'shop_name' => $shopName,
-                    'shop_logo' => $shopLogo,
-                    'shop_url' => $shopUrl,
-                    'ingenico_logo' => $ingenicoLogo
+                    Connector::PARAM_NAME_EPLATFORM => $eCommercePlatform,
+                    Connector::PARAM_NAME_COMPANY => $companyName,
+                    Connector::PARAM_NAME_EMAIL => $email,
+                    Connector::PARAM_NAME_COUNTRY => $countryCode,
+                    Connector::PARAM_NAME_REQUEST_TIME => new \DateTime('now'),
+                    Connector::PARAM_NAME_VERSION_NUM => $pluginVersion,
+                    Connector::PARAM_NAME_SHOP_NAME => $shopName,
+                    Connector::PARAM_NAME_SHOP_LOGO => $shopLogo,
+                    Connector::PARAM_NAME_SHOP_URL => $shopUrl,
+                    Connector::PARAM_NAME_INGENICO_LOGO => $ingenicoLogo
                 ],
                 $locale
             );
@@ -1993,7 +2126,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
      */
     public function getPaymentStatus($brand, $statusCode)
     {
-        $paymentMethod = PaymentMethod::getPaymentMethodByBrand($brand);
+        $paymentMethod = PaymentMethod::getPaymentMethodByBrand($brand, $this);
         if ($paymentMethod) {
             //if (!$this->configuration->getSettingsDirectsales()) {
             //    if (in_array($statusCode, $paymentMethod->getAuthModeSuccessCode())) {
@@ -2009,6 +2142,13 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             //    }
             //}
 
+            $status = self::getStatusByCode($statusCode);
+
+            // Twint doesn't support the Two phase flow. So if status is "authorized" then assume "captured"
+            if ($brand === 'TWINT' && $status == self::STATUS_AUTHORIZED) {
+                return self::STATUS_CAPTURED;
+            }
+
             if (in_array($statusCode, $paymentMethod->getAuthModeSuccessCode())) {
                 return self::STATUS_AUTHORIZED;
             }
@@ -2018,7 +2158,6 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             }
 
             // Payment status is refunded, cancelled?
-            $status = self::getStatusByCode($statusCode);
             //if (in_array($status, [self::STATUS_AUTHORIZED, self::STATUS_CAPTURED])) {
                 // Success transaction indicates getAuthModeSuccessCode() and getDirectSalesSuccessCode();
                 // So we're return error status for safe
@@ -2372,7 +2511,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
                 if (!empty($data['ALIAS'])) {
                     // Build Alias instance and save
                     $alias = new Alias($data);
-                    $alias->setCustomerId($order->getUserId());
+                    $alias->setCustomerId($order->getCustomerId());
                     $this->saveAlias($alias);
                 }
                 break;
@@ -2383,7 +2522,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
                 ) {
                     // Build Alias instance and save
                     $alias = new Alias($this->request->getAliasData());
-                    $alias->setCustomerId($order->getUserId());
+                    $alias->setCustomerId($order->getCustomerId());
                     $this->saveAlias($alias);
                 }
                 break;
@@ -2454,12 +2593,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         $locale = null
     ) {
         return $this->sendMail(
-            new MailTemplate(
+            (new MailTemplate(
                 $locale ?: $this->extension->getLocale(),
                 MailTemplate::LAYOUT_DEFAULT,
                 MailTemplate::MAIL_TEMPLATE_REMINDER,
                 $fields
-            ),
+            ))->setTemplatesDirectory($this->getMailTemplatesDirectory()),
             $to,
             $toName,
             $from,
@@ -2493,12 +2632,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         $locale = null
     ) {
         return $this->sendMail(
-            new MailTemplate(
+            (new MailTemplate(
                 $locale ?: $this->extension->getLocale(),
                 MailTemplate::LAYOUT_DEFAULT,
                 MailTemplate::MAIL_TEMPLATE_REFUND_FAILED,
                 $fields
-            ),
+            ))->setTemplatesDirectory($this->getMailTemplatesDirectory()),
             $to,
             $toName,
             $from,
@@ -2532,12 +2671,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         $locale = null
     ) {
         return $this->sendMail(
-            new MailTemplate(
+            (new MailTemplate(
                 $locale ?: $this->extension->getLocale(),
                 MailTemplate::LAYOUT_INGENICO,
                 MailTemplate::MAIL_TEMPLATE_ADMIN_REFUND_FAILED,
                 $fields
-            ),
+            ))->setTemplatesDirectory($this->getMailTemplatesDirectory()),
             $to,
             $toName,
             $from,
@@ -2571,12 +2710,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         $locale = null
     ) {
         return $this->sendMail(
-            new MailTemplate(
+            (new MailTemplate(
                 $locale ?: $this->extension->getLocale(),
                 MailTemplate::LAYOUT_DEFAULT,
                 MailTemplate::MAIL_TEMPLATE_PAID_ORDER,
                 $fields
-            ),
+            ))->setTemplatesDirectory($this->getMailTemplatesDirectory()),
             $to,
             $toName,
             $from,
@@ -2610,12 +2749,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         $locale = null
     ) {
         return $this->sendMail(
-            new MailTemplate(
+            (new MailTemplate(
                 $locale ?: $this->extension->getLocale(),
                 MailTemplate::LAYOUT_INGENICO,
                 MailTemplate::MAIL_TEMPLATE_ADMIN_PAID_ORDER,
                 $fields
-            ),
+            ))->setTemplatesDirectory($this->getMailTemplatesDirectory()),
             $to,
             $toName,
             $from,
@@ -2649,12 +2788,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         $locale = null
     ) {
         return $this->sendMail(
-            new MailTemplate(
+            (new MailTemplate(
                 $locale ?: $this->extension->getLocale(),
                 MailTemplate::LAYOUT_DEFAULT,
                 MailTemplate::MAIL_TEMPLATE_AUTHORIZATION,
                 $fields
-            ),
+            ))->setTemplatesDirectory($this->getMailTemplatesDirectory()),
             $to,
             $toName,
             $from,
@@ -2688,12 +2827,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         $locale = null
     ) {
         return $this->sendMail(
-            new MailTemplate(
+            (new MailTemplate(
                 $locale ?: $this->extension->getLocale(),
                 MailTemplate::LAYOUT_INGENICO,
                 MailTemplate::MAIL_TEMPLATE_ADMIN_AUTHORIZATION,
                 $fields
-            ),
+            ))->setTemplatesDirectory($this->getMailTemplatesDirectory()),
             $to,
             $toName,
             $from,
@@ -2727,12 +2866,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         $locale = null
     ) {
         return $this->sendMail(
-            new MailTemplate(
+            (new MailTemplate(
                 $locale ?: $this->extension->getLocale(),
                 MailTemplate::LAYOUT_INGENICO,
                 MailTemplate::MAIL_TEMPLATE_ONBOARDING_REQUEST,
                 $fields
-            ),
+            ))->setTemplatesDirectory($this->getMailTemplatesDirectory()),
             $to,
             $toName,
             $from,
@@ -2768,12 +2907,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
         array $attachedFiles = []
     ) {
         return $this->sendMail(
-            new MailTemplate(
+            (new MailTemplate(
                 $locale ?: $this->extension->getLocale(),
                 MailTemplate::LAYOUT_DEFAULT,
                 MailTemplate::MAIL_TEMPLATE_SUPPORT,
                 $fields
-            ),
+            ))->setTemplatesDirectory($this->getMailTemplatesDirectory()),
             $to,
             $toName,
             $from,
@@ -2784,17 +2923,17 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
     }
 
     /**
-     *
-     */
-
-    /**
      * Get Alias
-     * @param $aliasId
+     * @param mixed $aliasId
      * @return Alias
      */
     public function getAlias($aliasId)
     {
         $data = $this->extension->getAlias($aliasId);
+        if (!is_array($data)) {
+            $data = [];
+        }
+
         return new Alias($data);
     }
 
@@ -2831,7 +2970,9 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
                 'Dankor',
                 'UATP',
                 'AIRPLUS',
-                'Split Payment'
+                'Split Payment',
+                'Open Invoice DE',
+                'Open Invoice NL'
             ]
         )) {
             return true;
@@ -2874,7 +3015,12 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
                 $triggerTime = strtotime($order->getCreatedAt()) + ($days * 24 * 60 * 60);
                 if (time() >= $triggerTime) {
                     // Send Reminder
-                    $this->extension->sendReminderNotificationEmail($orderId);
+                    try {
+                        $this->extension->sendReminderNotificationEmail($orderId);
+                    } catch (\Exception $e) {
+                        $this->logger->critical('sendReminderNotificationEmail failure', [$orderId, $e->getMessage(), $e->getTraceAsString()]);
+                    }
+
                     $this->extension->setReminderSent($orderId);
                 }
             }
@@ -2915,4 +3061,5 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface
             }
         }
     }
+
 }

@@ -29,6 +29,13 @@ class FlexCheckout extends Checkout
             $request->setOgoneUri(FlexCheckoutPaymentRequest::PRODUCTION);
         }
 
+        $template = $this->getConfiguration()->getPaymentpageTemplateName();
+
+        // For compatibility with createFlexCheckout()
+        if ($this->hasData('template')) {
+            $template = $this->getTemplate();
+        }
+
         $request->setPspId($this->getConfiguration()->getPspid())
             ->setOrderId($this->getOrder()->getOrderId())
             ->setPaymentMethod($this->getAlias()->getPm())
@@ -37,8 +44,12 @@ class FlexCheckout extends Checkout
             ->setExceptionurl($this->getExceptionUrl())
             ->setStorePermanently($this->getAlias()->getIsShouldStoredPermanently() ? 'Y' : 'N')
             ->setAliasId(new \Ogone\FlexCheckout\Alias($this->getAlias()->getAlias()))
-            ->setTemplate($this->getTemplate())
+            ->setTemplate($template)
             ->setLanguage($this->getOrder()->getLocale());
+
+        if ($this->getAlias()->getIsShouldStoredPermanently()) {
+            $request->setForceAliasSave(true);
+        }
 
         return $request;
     }
@@ -46,6 +57,7 @@ class FlexCheckout extends Checkout
     /**
      * Create FlexCheckout Payment Request
      *
+     * @deprecated Use getPaymentRequest() instead of
      * @param Configuration $configuration
      * @param Order $order
      * @param Alias $alias

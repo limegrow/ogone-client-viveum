@@ -2,6 +2,8 @@
 
 namespace IngenicoClient;
 
+use IngenicoClient\PaymentMethod\PaymentMethod;
+
 /**
  * Interface ConnectorInterface.
  */
@@ -119,6 +121,14 @@ interface ConnectorInterface
      * @return array
      */
     public function requestOrderInfo($orderId = null);
+
+    /**
+     * Get Field Label
+     *
+     * @param string $field
+     * @return string
+     */
+    public function getOrderFieldLabel($field);
 
     /**
      * Save Platform's setting (key-value couple depending on the mode).
@@ -559,5 +569,56 @@ interface ConnectorInterface
      * Restore Shopping Cart.
      */
     public function restoreShoppingCart();
+
+    /**
+     * Process OpenInvoice Payment.
+     *
+     * @param mixed $orderId
+     * @param \IngenicoClient\Alias $alias
+     * @param array $fields Form fields
+     * @return void
+     */
+    public function processOpenInvoicePayment($orderId, \IngenicoClient\Alias $alias, array $fields = []);
+
+    /**
+     * Process if have invalid fields of OpenInvoice.
+     *
+     * @param $orderId
+     * @param \IngenicoClient\Alias $alias
+     * @param array $fields
+     */
+    public function clarifyOpenInvoiceAdditionalFields($orderId, \IngenicoClient\Alias $alias, array $fields);
+
+    /**
+     * Get all Session values in a key => value format
+     *
+     * @return array
+     */
+    public function getSessionValues();
+
+    /**
+     * Get value from Session.
+     *
+     * @param string $key
+     * @return mixed
+     */
+    public function getSessionValue($key);
+
+    /**
+     * Store value in Session.
+     *
+     * @param string $key
+     * @param mixed $value
+     * @return void
+     */
+    public function setSessionValue($key, $value);
+
+    /**
+     * Remove value from Session.
+     *
+     * @param $key
+     * @return void
+     */
+    public function unsetSessionValue($key);
 
 }

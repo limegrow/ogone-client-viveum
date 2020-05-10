@@ -3,15 +3,35 @@
 namespace IngenicoClient\PaymentMethod;
 
 use IngenicoClient\Exception;
+use IngenicoClient\Order;
 
 /**
  * Class PaymentMethod
  * @method mixed getIFrameUrl()
  * @method $this setIFrameUrl($url)
+ * @method bool getOrderLineItemsRequired();
+ * @method $this setOrderLineItemsRequired(bool $value);
+ * @method array getCommonFields();
+ * @method $this setCommonFields(array $value);
+ *
  * @package IngenicoClient\PaymentMethod
  */
-abstract class PaymentMethod  implements \ArrayAccess, PaymentMethodInterface
+class PaymentMethod  implements \ArrayAccess, PaymentMethodInterface
 {
+    /**
+     * Checkout Types
+     */
+    const CHECKOUT_B2C = 'b2c';
+    const CHECKOUT_B2B = 'b2b';
+
+    /**
+     * Customer Field Types
+     */
+    const TYPE_TEXT = 'text';
+    const TYPE_RADIO = 'radio';
+    const TYPE_NUMBERIC = 'number';
+    const TYPE_DATE = 'date';
+
     /**
      * ID Code
      * @var string
@@ -79,6 +99,12 @@ abstract class PaymentMethod  implements \ArrayAccess, PaymentMethodInterface
     protected $is_redirect_only = false;
 
     /**
+     * Defines if this payment method requires order line items to be sent with the request
+     * @var bool
+     */
+    protected $order_line_items_required = false;
+
+    /**
      * Is support Two phase flow
      * @var bool
      */
@@ -95,6 +121,41 @@ abstract class PaymentMethod  implements \ArrayAccess, PaymentMethodInterface
      * @var array
      */
     protected $auth_mode_success_code = [5];
+
+    /**
+     * Different PM values per different countries
+     * @var array
+     */
+    protected $pm_per_country = [];
+
+    /**
+     * Different Brand values per different countries
+     * @var array
+     */
+    protected $brand_per_country = [];
+
+    /**
+     * Common fields
+     * @var array
+     * @SuppressWarnings("Duplicates")
+     */
+    protected $common_fields = [];
+
+    /**
+     * Additional fields
+     * @var array
+     * @SuppressWarnings("Duplicates")
+     */
+    protected $additional_fields = [
+        'b2c' => [],
+        'b2b' => []
+    ];
+
+    /**
+     * Missing Fields
+     * @var array
+     */
+    private $missing_fields = [];
 
     /**
      * PaymentMethod constructor.
@@ -157,12 +218,129 @@ abstract class PaymentMethod  implements \ArrayAccess, PaymentMethodInterface
     }
 
     /**
+     * Set PM
+     * @param string $pm
+     * @return $this
+     */
+    public function setPM($pm)
+    {
+        $this->pm = $pm;
+
+        return $this;
+    }
+
+    /**
      * Get Brand
      * @return string
      */
     public function getBrand()
     {
         return $this->brand;
+    }
+
+    /**
+     * Set PM for Country
+     * @param string $country
+     * @param string $pm
+     * @return $this
+     */
+    public function setPMByCountry($country, $pm)
+    {
+        $this->pm_per_country[$country] = $pm;
+
+        return $this;
+    }
+
+    /**
+     * Get PM by Country Code
+     * @param string $country
+     * @return string
+     */
+    public function getPMByCountry($country)
+    {
+        if (array_key_exists($country, $this->pm_per_country)) {
+            return $this->pm_per_country[$country];
+        }
+
+        return null;
+    }
+
+    /**
+     * Set Brand for Country
+     * @param string $country
+     * @param string $brand
+     * @return $this
+     */
+    public function setBrandByCountry($country, $brand)
+    {
+        $this->brand_per_country[$country] = $brand;
+
+        return $this;
+    }
+
+    /**
+     * Get Brand by Country Code
+     * @param string $country
+     * @return string
+     */
+    public function getBrandByCountry($country)
+    {
+        if (array_key_exists($country, $this->brand_per_country)) {
+            return $this->brand_per_country[$country];
+        }
+
+        return null;
+    }
+
+    /**
+     * Set Additional Fields
+     * @param $checkout_type
+     * @param array $fields
+     * @return $this
+     */
+    public function setAdditionalFields($checkout_type, array $fields = [])
+    {
+        $this->additional_fields = $fields;
+
+        return $this;
+    }
+
+    /**
+     * Get Additional Fields
+     * @param string $checkout_type
+     * @return array
+     */
+    public function getAdditionalFields($checkout_type)
+    {
+        return $this->additional_fields;
+    }
+
+    /**
+     * Get Expected Fields
+     * @param $checkout_type
+     * @return array
+     */
+    public function getExpectedFields($checkout_type)
+    {
+        return array_merge($this->getCommonFields(), $this->getAdditionalFields($checkout_type));
+    }
+
+    /**
+     * Set Missing Fields
+     * @param array $fields
+     */
+    public function setMissingFields(array $fields)
+    {
+        $this->missing_fields = $fields;
+    }
+
+    /**
+     * Get Missing Fields
+     * @return array
+     */
+    public function getMissingFields()
+    {
+        return $this->missing_fields;
     }
 
     /**

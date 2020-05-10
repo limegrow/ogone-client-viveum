@@ -115,6 +115,14 @@ class Payment extends Data
             $keyName = array_search(strtoupper($key), $constants);
             $this->setData(strtolower(str_replace('FIELD_', '', $keyName)), $value);
         }
+
+        // Workaround for order_id, pay_id, pay_sub_id
+        foreach (['order_id', 'pay_id', 'pay_id_sub'] as $key) {
+            if (isset($data[$key])) {{
+                $keyName = array_search(strtoupper(str_replace('_', '', $key)), $constants);
+                $this->setData(strtolower(str_replace('FIELD_', '', $keyName)), $data[$key]);
+            }}
+        }
     }
 
     /**

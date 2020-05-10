@@ -39,6 +39,11 @@ class MailTemplate
     private $template;
 
     /**
+     * @var string
+     */
+    private $templates_directory;
+
+    /**
      * @var array
      */
     private $fields = [];
@@ -56,7 +61,7 @@ class MailTemplate
      * @param $template
      * @param array $fields
      */
-    public function __construct($locale, $layout, $template, $fields = array())
+    public function __construct($locale, $layout, $template, array $fields = array())
     {
         $this->locale = $locale;
         $this->layout = $layout;
@@ -86,53 +91,133 @@ class MailTemplate
     }
 
     /**
+     * Set Templates Directory
+     *
+     * @param string $templates_directory
+     * @return $this
+     */
+    public function setTemplatesDirectory($templates_directory)
+    {
+        $this->templates_directory = $templates_directory;
+
+        return $this;
+    }
+
+    /**
      * Get Message.
      *
      * @param $type
+     * @param bool $includeLayout
      *
      * @return false|string
      *
      * @throws Exception
      */
-    private function getMessage($type)
+    private function getMessage($type, $includeLayout = true)
     {
         if (!in_array($type, [self::TYPE_HTML, self::TYPE_PLAIN_TEXT])) {
             throw new Exception('Wrong type argument');
         }
 
-        return $this->renderTemplate($this->layout, $this->template, $type, $this->fields);
+        return $this->renderTemplate($includeLayout ? $this->layout : false, $this->template, $type, $this->fields);
     }
 
     /**
      * Get HTML.
      *
+     * @param bool $includeLayout
      * @return false|string
      *
      * @throws Exception
      */
-    public function getHtml()
+    public function getHtml($includeLayout = true)
     {
-        return $this->getMessage(self::TYPE_HTML);
+        return $this->getMessage(self::TYPE_HTML, $includeLayout);
     }
 
     /**
      * Get Plain Text.
      *
+     * @param bool $includeLayout
      * @return false|string
      *
      * @throws Exception
      */
-    public function getPlainText()
+    public function getPlainText($includeLayout = true)
     {
-        return $this->getMessage(self::TYPE_PLAIN_TEXT);
+        return $this->getMessage(self::TYPE_PLAIN_TEXT, $includeLayout);
+    }
+
+    /**
+     * Lookup Template
+     * @param string $template
+     * @param string $type
+     * @return string
+     * @throws Exception
+     */
+    private function lookupTemplate($template, $type)
+    {
+        // Clean up variables
+        $template = preg_replace('/[^a-zA-Z0-9_-]+/', '', $template);
+        $type = preg_replace('/[^a-zA-Z0-9_-]+/', '', $type);
+
+        // Default template directory
+        $templatesDirectory = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'templates';
+        $templateFile = $templatesDirectory . DIRECTORY_SEPARATOR . $template . DIRECTORY_SEPARATOR . $type . '.php';
+
+        // Check template in custom directory
+        if (!empty($this->templates_directory) && is_dir($this->templates_directory)) {
+            $templateFile = $this->templates_directory . DIRECTORY_SEPARATOR . $template . DIRECTORY_SEPARATOR . $type . '.php';
+            if (file_exists($templateFile)) {
+                return $templateFile;
+            }
+        }
+
+        if (!file_exists($templateFile)) {
+            throw new Exception("Template {$template} doesn't exist");
+        }
+
+        return $templateFile;
+    }
+
+    /**
+     * Lookup Layout
+     * @param string $layout
+     * @param string $type
+     * @return string
+     * @throws Exception
+     */
+    private function lookupLayout($layout, $type)
+    {
+        // Clean up variables
+        $layout = preg_replace('/[^a-zA-Z0-9_-]+/', '', $layout);
+        $type = preg_replace('/[^a-zA-Z0-9_-]+/', '', $type);
+
+        // Default layout directory
+        $templatesDirectory = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR . 'layouts';
+        $templateFile = $templatesDirectory . DIRECTORY_SEPARATOR . $layout . DIRECTORY_SEPARATOR . $type . '.php';
+
+        // Check layout in custom directory
+        if (!empty($this->templates_directory) && is_dir($this->templates_directory)) {
+            $templateFile = $this->templates_directory . DIRECTORY_SEPARATOR . 'layouts' . DIRECTORY_SEPARATOR . $layout . DIRECTORY_SEPARATOR . $type . '.php';
+            if (file_exists($templateFile)) {
+                return $templateFile;
+            }
+        }
+
+        if (!file_exists($templateFile)) {
+            throw new Exception("Layout {$layout} doesn't exist");
+        }
+
+        return $templateFile;
     }
 
     /**
      * Render template.
      *
-     * @param $layout
-     * @param $template
-     * @param $type
+     * @param string|false $layout
+     * @param string $template
+     * @param string $type
      * @param array $fields
      *
      * @return false|string
@@ -141,7 +226,6 @@ class MailTemplate
      */
     public function renderTemplate($layout, $template, $type, array $fields)
     {
-        $layout = preg_replace('/[^a-zA-Z0-9_-]+/', '', $layout);
         $template = preg_replace('/[^a-zA-Z0-9_-]+/', '', $template);
         $type = preg_replace('/[^a-zA-Z0-9_-]+/', '', $type);
 
@@ -155,27 +239,23 @@ class MailTemplate
 
         // Render View
         ob_start();
-        $templatesDirectory = __DIR__.'/../templates';
-        $templateFile = $templatesDirectory.'/'.$template.'/'.$type.'.php';
-        if (!file_exists($templateFile)) {
-            throw new Exception("Template {$template} don't exits");
-        }
-
+        $templateFile = $this->lookupTemplate($template, $type);
         require $templateFile;
         $contents = ob_get_contents();
         ob_end_clean();
+
+        // Return contents of template without layout
+        if (!$layout) {
+            return $contents;
+        }
 
         // Override content
         $fields['contents'] = $contents;
 
         // Render layout
         ob_start();
-
-        $layoutFile = $templatesDirectory.'/layouts/'.$layout.'/'.$type.'.php';
-        if (!file_exists($layoutFile)) {
-            throw new Exception("Layout {$layout} don't exits");
-        }
-
+        $layout = preg_replace('/[^a-zA-Z0-9_-]+/', '', $layout);
+        $layoutFile = $this->lookupLayout($layout, $type);
         require $layoutFile;
         $contents = ob_get_contents();
         ob_end_clean();

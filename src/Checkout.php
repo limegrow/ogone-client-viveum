@@ -2,6 +2,7 @@
 
 namespace IngenicoClient;
 
+use IngenicoClient\PaymentMethod\PaymentMethod;
 use Ogone\DirectLink\PaymentOperation;
 use Psr\Log\LoggerInterface;
 use Ogone\AbstractPaymentRequest;
@@ -30,6 +31,12 @@ abstract class Checkout extends Data implements CheckoutInterface
     const WIN3DS_POPUP = 'POPUP';
     const WIN3DS_POPIX = 'POPIX';
 
+    /**
+     * Checkout types
+     */
+    const TYPE_B2C = 'b2c';
+    const TYPE_B2B = 'b2b';
+
     const ITEM_ID = 'itemid';
     const ITEM_NAME = 'itemname';
     const ITEM_PRICE = 'itemprice';
@@ -47,6 +54,11 @@ abstract class Checkout extends Data implements CheckoutInterface
      * @var Order
      */
     protected $order;
+
+    /**
+     * @var PaymentMethod
+     */
+    protected $payment_method;
 
     /**
      * @var array
@@ -136,6 +148,29 @@ abstract class Checkout extends Data implements CheckoutInterface
     public function getOrder()
     {
         return $this->order;
+    }
+
+    /**
+     * Set Payment Method
+     *
+     * @param PaymentMethod $paymentMethod
+     * @return $this
+     */
+    public function setPaymentMethod(PaymentMethod $paymentMethod)
+    {
+        $this->payment_method = $paymentMethod;
+
+        return $this;
+    }
+
+    /**
+     * Get Payment Method
+     *
+     * @return PaymentMethod
+     */
+    public function getPaymentMethod()
+    {
+        return $this->payment_method;
     }
 
     /**
@@ -281,9 +316,10 @@ abstract class Checkout extends Data implements CheckoutInterface
      *
      * @param AbstractPaymentRequest $request
      * @param Order $order
+     * @param PaymentMethod|null $paymentMethod
      * @return AbstractPaymentRequest
      */
-    protected function assignOrder(AbstractPaymentRequest $request, Order $order)
+    protected function assignOrder(AbstractPaymentRequest $request, Order $order, $paymentMethod = null)
     {
         // Set values for Request instance
         $request->setOrderId($order->getOrderId())
@@ -308,15 +344,36 @@ abstract class Checkout extends Data implements CheckoutInterface
             ->setEcomBilltoPostalPostalcode($order->getBillingPostcode())
             ->setEcomBilltoPostalStreetLine1($order->getBillingAddress1())
             ->setEcomBilltoPostalStreetLine2($order->getBillingAddress2())
-            ->setEcomBilltoPostalStreetLine3($order->getBillingAddress3())
+            //->setEcomBilltoPostalStreetLine3($order->getBillingAddress3())
             ->setEcomShiptoPostalNameFirst($order->getShippingFirstName())
             ->setEcomShiptoPostalNameLast($order->getShippingLastName())
             ->setEcomShiptoPostalCountrycode($order->getShippingCountryCode())
             ->setEcomShiptoPostalCity($order->getShippingCity())
             ->setEcomShiptoPostalPostalcode($order->getShippingPostcode())
             ->setEcomShiptoPostalStreetLine1($order->getShippingAddress1())
-            ->setEcomShiptoPostalStreetLine2($order->getShippingAddress2())
-            ->setEcomShiptoPostalStreetLine3($order->getShippingAddress3());
+            ->setEcomShiptoPostalStreetLine2($order->getShippingAddress2());
+            //->setEcomShiptoPostalStreetLine3($order->getShippingAddress3());
+
+        if ($paymentMethod) {
+            // Generating the string with the list of items for the PMs that are requiring it (i.e. Open Invoice)
+            if ($paymentMethod->getOrderLineItemsRequired() && $items = (array) $order->getItems()) {
+                /** @var OrderItem $item */
+                foreach ($items as $id => $item) {
+                    // Don't pass shipping item for Klarna/Afterpay. It uses Ordershipcost instead of.
+                    if ($paymentMethod && in_array($paymentMethod->getId(), ['klarna', 'afterpay'])) {
+                        if ($item->getType() === OrderItem::TYPE_SHIPPING) {
+                            continue;
+                        }
+                    }
+
+                    $fields = $item->exchange();
+
+                    foreach ($fields as $key => $value) {
+                        $request->setData($key . ($id + 1), $value);
+                    }
+                }
+            }
+        }
 
         return $request;
     }
@@ -334,9 +391,10 @@ abstract class Checkout extends Data implements CheckoutInterface
      *
      * @param AbstractPaymentRequest $request
      * @param Order $order
+     * @param PaymentMethod|null $paymentMethod
      * @return AbstractPaymentRequest
      */
-    public function assignBrowserData(AbstractPaymentRequest $request, Order $order)
+    public function assignBrowserData(AbstractPaymentRequest $request, Order $order, $paymentMethod = null)
     {
         $request->setBrowseracceptheader($order->getHttpAccept());
         $request->setBrowseruseragent($order->getHttpUserAgent());

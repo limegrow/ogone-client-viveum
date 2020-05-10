@@ -21,6 +21,15 @@ interface IngenicoCoreLibraryInterface
     public function getConfiguration();
 
     /**
+     * Set Generic Merchant Country.
+     *
+     * @param $country
+     * @return Configuration
+     * @throws Exception
+     */
+    public function setGenericCountry($country);
+
+    /**
      * Translate string.
      *
      * @param $id
@@ -87,11 +96,12 @@ interface IngenicoCoreLibraryInterface
      *
      * @param mixed $orderId
      * @param mixed $aliasId
+     * @param bool $forceAliasSave
      *
      * @throws Exception
      * @return void
      */
-    public function processPayment($orderId, $aliasId = null);
+    public function processPayment($orderId, $aliasId = null, $forceAliasSave = false);
 
     /**
      * Executed on the moment when customer's alias saved, and we're should charge payment.
@@ -583,4 +593,5 @@ interface IngenicoCoreLibraryInterface
      * @return LoggerInterface|null
      */
     public function getLogger();
+
 }
