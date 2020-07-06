@@ -1,12 +1,19 @@
 # Changelog
 
-## [2.0.0] - 2020-05-10
+## [2.1.0] - 2020-07-06
 ### Added
-- OpenInvoice support (Klarna and AfterPay)
+- Country support for Austria
+
+## [2.0.0] - 2020-04-24
+### Added
+- Support for OpenInvoice
+- Special flow for Twint
+
+### Changed
+- Alias operation
 
 ### Fixed
-- PHP 7.3 compatibility
-- Possible Monolog version requirement conflict
+-  Payment page template for HostedCheckout
 
 ## [1.0.4] - 2019-11-08
 ### Fixed

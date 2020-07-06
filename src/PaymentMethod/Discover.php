@@ -45,6 +45,9 @@ class Discover extends PaymentMethod implements PaymentMethodInterface
      * @var array
      */
     protected $countries = [
+        'AT' => [
+            'popularity' => 20
+        ],
         'BE' => [
             'popularity' => 20
         ],

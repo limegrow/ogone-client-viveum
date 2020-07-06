@@ -45,6 +45,9 @@ class Visa extends PaymentMethod implements PaymentMethodInterface
      * @var array
      */
     protected $countries = [
+        'AT' => [
+            'popularity' => 100
+        ],
         'BE' => [
             'popularity' => 80
         ],

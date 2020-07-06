@@ -45,6 +45,9 @@ class Amex extends PaymentMethod implements PaymentMethodInterface
      * @var array
      */
     protected $countries = [
+        'AT' => [
+            'popularity' => 40
+        ],
         'BE' => [
             'popularity' => 40
         ],
