@@ -19,7 +19,9 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
     const STATUS_PENDING = 'pending';
     const STATUS_AUTHORIZED = 'authorized';
     const STATUS_CAPTURED = 'captured';
+    const STATUS_CAPTURE_PROCESSING = 'capture_processing';
     const STATUS_CANCELLED = 'cancelled';
+    const STATUS_REFUND_PROCESSING = 'refund_processing';
     const STATUS_REFUNDED = 'refunded';
     const STATUS_ERROR = 'error';
     const STATUS_UNKNOWN = 'unknown';
@@ -1710,7 +1712,8 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
                 throw new Exception('WebHook: Validation failed');
             }
 
-            if ($_POST['NCERROR'] !== '0') {
+            // if ($_POST['NCERROR'] !== '0') { // replaced by Konstantin on 06.07 as Ingenico now returns empty NCERROR if no errors found
+            if (!empty($_POST['NCERROR'])) {
                 $details = isset($_POST['NCERRORPLUS']) ? $_POST['NCERRORPLUS'] : '';
                 throw new Exception(sprintf('NCERROR: %s. NCERRORPLUS: %s', $_POST['NCERROR'], $details));
             }
@@ -2084,27 +2087,31 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
                 // 59 - Authorization to be requested manually
                 return self::STATUS_AUTHORIZED;
             case 8:
-            case 81:
-            case 82:
             case 84:
             case 85:
             case 7:
                 // 7 - Payment deleted
                 // 8 - Refund
-                // 81 - Refund pending
-                // 82 - Refund uncertain
                 // 84 - Refund
                 // 85 - Refund handled by merchant
                 return self::STATUS_REFUNDED;
+            case 81:
+                // 81 - Refund pending
+                return self::STATUS_REFUND_PROCESSING;
+            case 82:
+                // 82 - Refund uncertain
+                return self::STATUS_ERROR;
             case 9:
-            case 91:
-            case 92:
             case 95:
                 // 9 - Payment requested
-                // 91 - Payment processing
-                // 92 - Payment uncertain
                 // 95 - Payment handled by merchant (Direct Debit uses this)
                 return self::STATUS_CAPTURED;
+            case 91:
+                // 91 - Capture processing
+                return self::STATUS_CAPTURE_PROCESSING;
+            case 92:
+                // 92 - Payment uncertain
+                return self::STATUS_ERROR;
             case 41:
                 // Bank transfer only, both modes: SUCCESS
                 return self::STATUS_CAPTURED;
@@ -2196,63 +2203,29 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
         // Process order
         switch ($paymentStatus) {
             case self::STATUS_AUTHORIZED:
-                // Update order status on Connector
-                $this->extension->updateOrderStatus(
-                    $orderId,
-                    $paymentStatus,
-                    $this->__('checkout.payment_info', [
-                        '%status%' => $paymentStatus,
-                        '%status_code%' => $paymentResult->getStatus(),
-                        '%payment_id%' => $paymentResult->getPayId(),
-                    ], 'messages')
-                );
-
+                $this->updateOrderStatus($orderId, $paymentResult);
                 if ($this->configuration->getDirectSaleEmailOption()) {
                     // Send notifications
                     $this->extension->sendNotificationAuthorization($orderId);
                     $this->extension->sendNotificationAdminAuthorization($orderId);
                 }
                 break;
+            case self::STATUS_CAPTURE_PROCESSING:
+                $this->updateOrderStatus($orderId, $paymentResult);
+                break;
             case self::STATUS_CAPTURED:
-                // Update order status on Connector
-                $this->extension->updateOrderStatus(
-                    $orderId,
-                    $paymentStatus,
-                    $this->__('checkout.payment_info', [
-                        '%status%' => $paymentStatus,
-                        '%status_code%' => $paymentResult->getStatus(),
-                        '%payment_id%' => $paymentResult->getPayId(),
-                    ], 'messages')
-                );
-
+                $this->updateOrderStatus($orderId, $paymentResult);
                 $this->extension->addCapturedAmount($orderId, $paymentResult->getAmount());
                 break;
+            case self::STATUS_REFUND_PROCESSING:
+                $this->updateOrderStatus($orderId, $paymentResult);
+                break;
             case self::STATUS_REFUNDED:
-                // Update order status on Connector
-                $this->extension->updateOrderStatus(
-                    $orderId,
-                    $paymentStatus,
-                    $this->__('checkout.payment_info', [
-                        '%status%' => $paymentStatus,
-                        '%status_code%' => $paymentResult->getStatus(),
-                        '%payment_id%' => $paymentResult->getPayId(),
-                    ], 'messages')
-                );
-
+                $this->updateOrderStatus($orderId, $paymentResult);
                 $this->extension->addRefundedAmount($orderId, $paymentResult->getAmount());
                 break;
             case self::STATUS_CANCELLED:
-                // Update order status on Connector
-                $this->extension->updateOrderStatus(
-                    $orderId,
-                    $paymentStatus,
-                    $this->__('checkout.payment_info', [
-                        '%status%' => $paymentStatus,
-                        '%status_code%' => $paymentResult->getStatus(),
-                        '%payment_id%' => $paymentResult->getPayId(),
-                    ], 'messages')
-                );
-
+                $this->updateOrderStatus($orderId, $paymentResult);
                 $this->extension->addCancelledAmount($orderId, $paymentResult->getAmount());
                 break;
             case self::STATUS_ERROR:
@@ -2265,9 +2238,6 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
 
                 $paymentResult->setMessage($message);
                 $this->logger->debug(__CLASS__ . '::' . __METHOD__ . ' Error: ' . $message, $paymentResult->toArray());
-
-                // Update order status on Connector
-                $this->extension->updateOrderStatus($orderId, $paymentStatus, $message);
                 break;
             case self::STATUS_UNKNOWN:
                 $this->logger->debug(__CLASS__ . '::' . __METHOD__ . ' Unknown status', $paymentResult->toArray());
@@ -2275,6 +2245,30 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
         }
 
         return $paymentStatus;
+    }
+    
+    /**
+     * Update order status
+     *
+     * @param $type
+     * @param $orderId
+     * @param $paymentResult
+     *
+     * @return null
+     */
+    public function updateOrderStatus($orderId, $paymentResult)
+    {
+        $this->extension->updateOrderStatus(
+            $orderId,
+            $paymentResult,
+            $this->__('checkout.payment_info', [
+                '%status%' => $paymentResult->getPaymentStatus(),
+                '%status_code%' => $paymentResult->getStatus(),
+                '%payment_id%' => $paymentResult->getPayId(),
+            ], 'messages')
+        );
+        
+        return null;
     }
 
     /**
@@ -2293,7 +2287,8 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
         if (!$cancelAmount) {
             $cancelAmount = $order->getAmount();
         }
-
+        
+        $cancelAmount = (float) bcdiv($cancelAmount, 1, 2);
         if ($cancelAmount > $order->getAvailableAmountForCancel()) {
             return false;
         }
@@ -2318,7 +2313,8 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
         if (!$captureAmount) {
             $captureAmount = $order->getAmount();
         }
-
+        
+        $captureAmount = (float) bcdiv($captureAmount, 1, 2);
         if ($captureAmount > $order->getAvailableAmountForCapture()) {
             return false;
         }
@@ -2344,12 +2340,21 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
             $refundAmount = $order->getAmount();
         }
 
+        $this->logger->debug(__CLASS__ . '::' . __METHOD__ . ' $refundAmount before = '. $refundAmount);
+        $refundAmount = (float)bcdiv($refundAmount, 1, 2);
+        $this->logger->debug(__CLASS__ . '::' . __METHOD__ . ' $refundAmount after = '. $refundAmount);
+        $this->logger->debug(__CLASS__ . '::' . __METHOD__ . ' $order->getAvailableAmountForRefund() = '. $order->getAvailableAmountForRefund());
+
         if ($refundAmount > $order->getAvailableAmountForRefund()) {
+            $this->logger->debug(__CLASS__ . '::' . __METHOD__ . ' false ');
             return false;
         }
 
         $statusCode = $this->getPaymentInfo($orderId, $payId)->getStatus();
-        return self::STATUS_CAPTURED === $this->getStatusByCode($statusCode);
+        $this->logger->debug(__CLASS__ . '::' . __METHOD__ . ' $statusCode = '.$statusCode);
+        $this->logger->debug(__CLASS__ . '::' . __METHOD__ . ' $this->getStatusByCode($statusCode) = '.$this->getStatusByCode($statusCode));
+        //return self::STATUS_CAPTURED === $this->getStatusByCode($statusCode);
+        return true;
     }
 
     /**

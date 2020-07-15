@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.0.0] - 2020-07-13
+### Added
+- Support for refund processing with status 81
+- Support for capture in progress status
+
+### Changed
+- Billing address name is not sent to Ingenico as the Cardholder name
+
+### Fixed
+- Issue with payment return error status
+- Issue with e-mail template giving an error
+- Refund amount rounding
+
+
 ## [2.1.0] - 2020-07-06
 ### Added
 - Country support for Austria

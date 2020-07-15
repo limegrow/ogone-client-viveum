@@ -8,7 +8,7 @@
 ?>
 <?php echo $view->__('refund_failed.dear', ['%name%' => '<span style="color: #306ba8">' . $customer_name . '</span>'], 'email'); ?>,
 <br/><br />
-<?php echo $view->__('refund_failed.text1', ['%order_id%' => '<a href="' . $order_link . '" style="text-decoration: none; color: #306ba8">' . $order_reference . '</a>'], 'email'); ?>
+<?php echo $view->__('refund_failed.text1', ['%order_id%' => '<a href="' . $order_url . '" style="text-decoration: none; color: #306ba8">' . $order_reference . '</a>'], 'email'); ?>
 <br /><br />
 <?php echo $view->__('refund_failed.text2', [], 'email'); ?>
 <br /><br />

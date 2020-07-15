@@ -331,7 +331,7 @@ abstract class Checkout extends Data implements CheckoutInterface
             ->setOwnerZip($order->getBillingPostcode())
             ->setOwnertelno($order->getBillingPhone())
             ->setCivility($order->getCustomerCivility())
-            ->setCn($order->getBillingFullName())
+            //->setCn($order->getBillingFullName())
             ->setEmail($order->getBillingEmail())
             ->setCuid($order->getBillingEmail())
             ->setEcomShiptoDob($order->getCustomerDob())
