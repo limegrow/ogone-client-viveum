@@ -1,5 +1,11 @@
 # Changelog
 
+
+## [3.0.1] - 2020-07-22
+### Changed
+- When calling `updateOrderStatus()` method on Connector from \IngenicoClient\IngenicoCoreLibrary, now passing \IngenicoClient\Payment object as second parameter, previously it was a string.
+- For Banktransfer/Bancontact payment methods status code “41” now sending “STATUS_PENDING” to Connector
+
 ## [3.0.0] - 2020-07-13
 ### Added
 - Support for refund processing with status 81

@@ -36,7 +36,7 @@ msgid "exceptions.refund_failed"
 msgstr "Refund failed. Error %code% %message%"
 
 msgid "exceptions.capture_unavailable"
-msgstr "Refund unavailable"
+msgstr "Capture unavailable"
 
 msgid "exceptions.capture_failed"
 msgstr "Capture failed. Error %code% %message%"

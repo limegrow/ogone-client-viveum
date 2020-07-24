@@ -72,7 +72,7 @@ class BankTransfer extends PaymentMethod implements PaymentMethodInterface
      * Transaction codes that indicate capturing.
      * @var array
      */
-    protected $direct_sales_success_code = [41];
+    protected $direct_sales_success_code = [];
 
     /**
      * Transaction codes that indicate authorization.

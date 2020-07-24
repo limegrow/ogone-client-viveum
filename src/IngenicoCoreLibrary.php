@@ -22,6 +22,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
     const STATUS_CAPTURE_PROCESSING = 'capture_processing';
     const STATUS_CANCELLED = 'cancelled';
     const STATUS_REFUND_PROCESSING = 'refund_processing';
+    const STATUS_REFUND_REFUSED = 'refund_refused';
     const STATUS_REFUNDED = 'refunded';
     const STATUS_ERROR = 'error';
     const STATUS_UNKNOWN = 'unknown';
@@ -1736,7 +1737,7 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
                 case self::STATUS_REFUNDED:
                     try {
                         if (!$this->canRefund($orderId, $payId)) {
-                            throw new Exception('Refund unavailable.');
+                            throw new Exception($this->__('exceptions.refund_unavailable'));
                         }
 
                         // Save payment results and update order status
@@ -1744,11 +1745,9 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
                     } catch (\Exception $e) {
                         // No refund possible
                         $this->logger->debug(sprintf('%s::%s %s %s', __CLASS__, __METHOD__, __LINE__, $e->getMessage()));
-                        $this->extension->sendRefundFailedCustomerEmail($orderId);
-                        $this->extension->sendRefundFailedAdminEmail($orderId);
                     }
-
                     break;
+                    
                 default:
                     try {
                         // Save payment results and update order status
@@ -1776,7 +1775,6 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
                         $this->extension->sendOrderPaidCustomerEmail($orderId);
                         $this->extension->sendOrderPaidAdminEmail($orderId);
                     }
-
                     break;
             }
 
@@ -2101,6 +2099,9 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
             case 82:
                 // 82 - Refund uncertain
                 return self::STATUS_ERROR;
+            case 83:
+                // 83 - Refund Refused
+                return self::STATUS_REFUND_REFUSED;
             case 9:
             case 95:
                 // 9 - Payment requested
@@ -2113,8 +2114,6 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
                 // 92 - Payment uncertain
                 return self::STATUS_ERROR;
             case 41:
-                // Bank transfer only, both modes: SUCCESS
-                return self::STATUS_CAPTURED;
             case 46:
                 // 46 - waiting for identification
                 return self::STATUS_PENDING;
@@ -2219,6 +2218,11 @@ class IngenicoCoreLibrary implements IngenicoCoreLibraryInterface, SessionInterf
                 break;
             case self::STATUS_REFUND_PROCESSING:
                 $this->updateOrderStatus($orderId, $paymentResult);
+                break;
+            case self::STATUS_REFUND_REFUSED:
+                $this->updateOrderStatus($orderId, $paymentResult);
+                $this->extension->sendRefundFailedCustomerEmail($orderId);
+                $this->extension->sendRefundFailedAdminEmail($orderId);
                 break;
             case self::STATUS_REFUNDED:
                 $this->updateOrderStatus($orderId, $paymentResult);

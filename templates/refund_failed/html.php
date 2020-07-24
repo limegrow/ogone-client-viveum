@@ -14,4 +14,4 @@
 <br /><br />
 <?php echo $view->__('refund_failed.text3', [], 'email'); ?>
 <br /><br />
-<a style="text-decoration: none; color: #306ba8"> href="<?php echo $shop_url; ?>"><?php echo $shop_name; ?> <?php echo $view->__('refund_failed.administration', [], 'email'); ?></a>
+<a style="text-decoration: none; color: #306ba8" href="<?php echo $shop_url; ?>"><?php echo $shop_name; ?> <?php echo $view->__('refund_failed.administration', [], 'email'); ?></a>
